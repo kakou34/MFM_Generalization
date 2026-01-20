@@ -1,0 +1,8 @@
+torch
+monai[nibabel]
+pandas
+numpy
+requests
+medim
+matplotlib
+scikit-learn
