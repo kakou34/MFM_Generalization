@@ -1,5 +1,5 @@
 torch
-monai[nibabel]
+monai[nibabel]==1.3.2
 pandas
 numpy
 requests
