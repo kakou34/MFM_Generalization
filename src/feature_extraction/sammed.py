@@ -1,3 +1,6 @@
+import os
+import random
+import numpy as np
 from pathlib import Path
 import copy
 import argparse
@@ -13,6 +16,18 @@ from monai.transforms import (
     ResizeWithPadOrCropd,
     NormalizeIntensityd,
 )
+
+# fix random seed 
+seed = 42
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+
+# Set GPU
+os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(seed)
 
 ### Dataset preparation functions 
 def get_full_img_path(row, root_dir: Path) -> pd.Series:
