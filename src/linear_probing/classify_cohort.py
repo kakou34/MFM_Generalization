@@ -114,7 +114,7 @@ def main(args):
         all_results[key] = {
             "balanced_accuracy": bal_accs,
             "f1_score": f1_scores,
-            "roc_auc": roc_aucs,
+            "auc": roc_aucs,
         }
 
     # Save results
@@ -124,7 +124,7 @@ def main(args):
             zip(
                 metrics["balanced_accuracy"],
                 metrics["f1_score"],
-                metrics["roc_auc"],
+                metrics["auc"],
             )
         ):
             rows.append({
@@ -132,7 +132,7 @@ def main(args):
                 "split": split_idx,
                 "balanced_accuracy": bal,
                 "f1_score": f1,
-                "roc_auc": auc,
+                "auc": auc,
             })
 
     df = pd.DataFrame(rows)
