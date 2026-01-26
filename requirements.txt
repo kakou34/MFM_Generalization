@@ -6,3 +6,4 @@ requests
 medim
 matplotlib
 scikit-learn
+POT
