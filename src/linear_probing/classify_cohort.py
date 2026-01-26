@@ -108,7 +108,7 @@ def main(args):
 
     # Generate all pairwise combinations (unordered, no repetition)
     for cohort_a, cohort_b in itertools.combinations(cohorts, 2):
-        key = f"{cohort_a}_vs_{cohort_b}"
+        key = f"{cohort_a}_{cohort_b}"
         print(f"\nRunning experiment: {cohort_a} vs {cohort_b}")
         bal_accs, f1_scores, roc_aucs = run_pairwise_experiment(df, cohort_a, cohort_b, n_splits=args.num_splits, epochs=args.num_epochs, lr=args.learning_rate)
         all_results[key] = {
