@@ -19,7 +19,7 @@ class LinearClassifier(nn.Module):
         return self.fc(x)
 
 # Function to run one pairwise experiment between any two cohorts
-def run_pairwise_experiment(df, cohort_a, cohort_b, n_splits=20, epochs=100, lr=1e-3):
+def run_pairwise_experiment(df, cohort_a, cohort_b, n_samples=150, n_splits=20, epochs=100, lr=1e-3):
     results_bacc = []
     results_f1 = []
     results_rocauc = []
@@ -27,6 +27,13 @@ def run_pairwise_experiment(df, cohort_a, cohort_b, n_splits=20, epochs=100, lr=
     # Filter label==0 for each cohort
     a_samples = df[(df['cohort'] == cohort_a) & (df['label'] == 0)]
     b_samples = df[(df['cohort'] == cohort_b) & (df['label'] == 0)]
+    
+    # Sampling strategy (handle small cohorts)
+    n_a = min(n_samples, len(a_samples))
+    n_b = min(n_samples, len(b_samples))
+
+    a_samples = a_samples.sample(n=n_a, replace=False, random_state=42)
+    b_samples = b_samples.sample(n=n_b, replace=False, random_state=42)
 
 
     FEATURE_COLS = [c for c in df.columns if c.startswith("Feature")]
