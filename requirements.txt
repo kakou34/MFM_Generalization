@@ -7,3 +7,5 @@ medim
 matplotlib
 scikit-learn
 POT
+omegaconf
+xformers
