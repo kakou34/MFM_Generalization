@@ -51,24 +51,46 @@ def run_pairwise_experiment(df, cohort_a, cohort_b, n_samples=150, n_splits=20, 
         X_train, X_test = X_tensor[train_idx], X_tensor[test_idx]
         y_train, y_test = y_tensor[train_idx], y_tensor[test_idx]
 
-        # Special case: oversample NigerianBrain if used
-        if cohort_a == 'NigerianBrain' or cohort_b == 'NigerianBrain':
-            minority_label = 0 if cohort_a == 'NigerianBrain' else 1
-            minority_train = X_train[y_train.squeeze() == minority_label]
-            majority_train = X_train[y_train.squeeze() != minority_label]
-            # Oversample minority to match majority size
-            if len(minority_train) > 0:
-                n_majority = len(majority_train)
-                # Randomly pick indices from minority_train with replacement
-                indices = torch.randint(low=0, high=len(minority_train), size=(n_majority,), device=DEVICE)
-                minority_oversampled = minority_train[indices]
+        # Get labels
+        labels = y_train.squeeze()
 
-                # Concatenate oversampled minority with majority
-                X_train = torch.cat([majority_train, minority_oversampled], dim=0)
-                y_train = torch.cat([
-                    torch.full((n_majority, 1), 1 - minority_label, device=DEVICE, dtype=torch.float32),
-                    torch.full((n_majority, 1), minority_label, device=DEVICE, dtype=torch.float32)
-                ], dim=0)
+        # Split by cohort label
+        train_0 = X_train[labels == 0]
+        train_1 = X_train[labels == 1]
+
+        n0 = len(train_0)
+        n1 = len(train_1)
+
+        # Only upsample if counts differ
+        if n0 != n1 and min(n0, n1) > 0:
+
+            # Identify minority / majority
+            if n0 < n1:
+                minority_label = 0
+                minority_train = train_0
+                majority_train = train_1
+            else:
+                minority_label = 1
+                minority_train = train_1
+                majority_train = train_0
+
+            n_majority = len(majority_train)
+
+            # Oversample minority to match majority
+            indices = torch.randint(
+                low=0,
+                high=len(minority_train),
+                size=(n_majority,),
+                device=DEVICE
+            )
+            minority_oversampled = minority_train[indices]
+
+            # Rebuild training set
+            X_train = torch.cat([majority_train, minority_oversampled], dim=0)
+            y_train = torch.cat([
+                torch.full((n_majority, 1), 1 - minority_label, device=DEVICE, dtype=torch.float32),
+                torch.full((n_majority, 1), minority_label, device=DEVICE, dtype=torch.float32)
+            ], dim=0)
 
         # Shuffle training set
         perm = torch.randperm(len(X_train))
