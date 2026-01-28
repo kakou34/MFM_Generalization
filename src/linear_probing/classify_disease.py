@@ -144,8 +144,8 @@ def train_each_test_all(df, n_splits=20, out_path="results_disease_classificatio
                         'train': train_cohort,
                         'test': test_cohort,
                         'split': split_idx,
-                        'bal_acc': bal_acc,
-                        'f1': f1,
+                        'balanced_accuracy': bal_acc,
+                        'f1_score': f1,
                         'auc': auc,
                         'wasserstein_dist': wasserstein_dist
                     })

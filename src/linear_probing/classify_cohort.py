@@ -137,13 +137,13 @@ def main(args):
 
     # Generate all pairwise combinations (unordered, no repetition)
     for cohort_a, cohort_b in itertools.combinations(cohorts, 2):
-        key = f"{cohort_a}_vs_{cohort_b}"
+        key = f"{cohort_a}_{cohort_b}"
         print(f"\nRunning experiment: {cohort_a} vs {cohort_b}")
         bal_accs, f1_scores, roc_aucs = run_pairwise_experiment(df, cohort_a, cohort_b, n_splits=args.num_splits, epochs=args.num_epochs, lr=args.learning_rate)
         all_results[key] = {
             "balanced_accuracy": bal_accs,
             "f1_score": f1_scores,
-            "roc_auc": roc_aucs,
+            "auc": roc_aucs,
         }
 
     # Save results
@@ -153,7 +153,7 @@ def main(args):
             zip(
                 metrics["balanced_accuracy"],
                 metrics["f1_score"],
-                metrics["roc_auc"],
+                metrics["auc"],
             )
         ):
             rows.append({
@@ -161,7 +161,7 @@ def main(args):
                 "split": split_idx,
                 "balanced_accuracy": bal,
                 "f1_score": f1,
-                "roc_auc": auc,
+                "auc": auc,
             })
 
     df = pd.DataFrame(rows)
