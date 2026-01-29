@@ -1,0 +1,3 @@
+[submodule "3DINO"]
+	path = 3DINO
+	url = https://github.com/AICONSlab/3DINO.git

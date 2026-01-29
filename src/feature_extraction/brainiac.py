@@ -167,7 +167,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Extract SAM features from brain MRI data"
+        description="Extract BrainIAC features from brain MRI data"
     )
 
     parser.add_argument(
