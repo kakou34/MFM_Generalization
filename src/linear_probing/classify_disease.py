@@ -1,4 +1,4 @@
-from sklearn.model_selection import StratifiedShuffleSplit
+from sklearn.model_selection import StratifiedShuffleSplit, StratifiedGroupKFold
 from sklearn.metrics import balanced_accuracy_score, f1_score, roc_auc_score
 from torch.utils.data import TensorDataset, DataLoader
 import torch
@@ -70,10 +70,8 @@ def train_each_test_all(df, n_splits=20, batch_size=64, out_path="results_diseas
     cohorts = df['cohort'].unique().tolist()
     FEATURE_COLS = [c for c in df.columns if c.startswith("Feature")]
 
-    # Initialize results dictionary: train_cohort -> test_cohort -> list of scores
     results = []
 
-    # Hyperparameter grid
     lr_list = [0.001, 0.005, 0.01]
     epoch_list = [25, 50, 100]
 
@@ -84,9 +82,25 @@ def train_each_test_all(df, n_splits=20, batch_size=64, out_path="results_diseas
         X_np = train_df[FEATURE_COLS].values.astype(np.float32)
         y_np = train_df['label'].values.astype(np.float32)
 
-        sss = StratifiedShuffleSplit(n_splits=n_splits, test_size=0.3, random_state=42)
+        # ---- Splitter (group-aware if subject_id exists) ----
+        if 'subject_id' in train_df.columns:
+            groups = train_df['subject_id'].values
+            splitter = StratifiedGroupKFold(
+                n_splits=n_splits,
+                shuffle=True,
+                random_state=42
+            )
+            split_iterator = splitter.split(X_np, y_np, groups)
+        else:
+            splitter = StratifiedShuffleSplit(
+                n_splits=n_splits,
+                test_size=0.3,
+                random_state=42
+            )
+            split_iterator = splitter.split(X_np, y_np)
 
-        for split_idx, (train_idx, val_idx) in enumerate(sss.split(X_np, y_np)):
+        for split_idx, (train_idx, val_idx) in enumerate(split_iterator):
+
             X_train_np, X_val_np = X_np[train_idx], X_np[val_idx]
             y_train_np, y_val_np = y_np[train_idx], y_np[val_idx]
 
@@ -95,7 +109,7 @@ def train_each_test_all(df, n_splits=20, batch_size=64, out_path="results_diseas
             X_val = torch.from_numpy(X_val_np).to(DEVICE)
             y_val = torch.from_numpy(y_val_np).to(DEVICE).unsqueeze(1)
 
-            # ---- Hyperparameter tuning on internal validation ----
+            # ---- Hyperparameter tuning ----
             best_bal_acc = 0.0
             best_model_state = None
             best_lr, best_epochs = None, None
@@ -105,7 +119,11 @@ def train_each_test_all(df, n_splits=20, batch_size=64, out_path="results_diseas
                     model = EnhancedLinearClassifier(input_dim=X_train.shape[1]).to(DEVICE)
                     criterion = nn.BCEWithLogitsLoss()
                     optimizer = optim.Adam(model.parameters(), lr=lr)
-                    train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=batch_size, shuffle=True)
+                    train_loader = DataLoader(
+                        TensorDataset(X_train, y_train),
+                        batch_size=batch_size,
+                        shuffle=True
+                    )
 
                     for _ in range(epochs):
                         model.train()
@@ -115,7 +133,6 @@ def train_each_test_all(df, n_splits=20, batch_size=64, out_path="results_diseas
                             loss.backward()
                             optimizer.step()
 
-                    # Evaluate on validation split
                     model.eval()
                     with torch.no_grad():
                         logits = model(X_val)
@@ -129,16 +146,15 @@ def train_each_test_all(df, n_splits=20, batch_size=64, out_path="results_diseas
 
             print(f"Split {split_idx+1}: best lr={best_lr}, epochs={best_epochs}, val balanced_acc={best_bal_acc:.3f}")
 
-            # ---- Retrain best model on the full dataset of this cohort ----
+            # ---- Reload best model ----
             model = EnhancedLinearClassifier(input_dim=X_train.shape[1]).to(DEVICE)
             model.load_state_dict(best_model_state)
             model.eval()
-            
-            # ---- Get training samples with label=0 for this split ----
+
             train_label_0_mask = (y_train_np == 0)
             X_train_label0_np = X_train_np[train_label_0_mask]
 
-            # ---- Evaluate this model on all cohorts ----
+            # ---- Evaluate on all cohorts ----
             with torch.no_grad():
                 for test_cohort in cohorts:
                     test_df = df[df['cohort'] == test_cohort]
@@ -150,28 +166,25 @@ def train_each_test_all(df, n_splits=20, batch_size=64, out_path="results_diseas
 
                     logits = model(X_test)
                     preds = (torch.sigmoid(logits) > 0.5).cpu().numpy()
+
                     bal_acc = balanced_accuracy_score(y_test.cpu().numpy(), preds)
                     f1 = f1_score(y_test.cpu().numpy(), preds)
-                    auc = roc_auc_score(y_test.cpu().numpy(), torch.sigmoid(logits).cpu().numpy())
+                    auc = roc_auc_score(
+                        y_test.cpu().numpy(),
+                        torch.sigmoid(logits).cpu().numpy()
+                    )
 
                     test_label_0_mask = (y_test_np == 0)
                     X_test_label0_np = X_test_np[test_label_0_mask]
-                    
-                    ## computing distance
+
                     if len(X_train_label0_np) > 0 and len(X_test_label0_np) > 0:
-                        # Compute cost matrix (squared Euclidean distance)
                         M = ot.dist(X_train_label0_np, X_test_label0_np, metric='sqeuclidean')
-                        
-                        # Uniform distributions
                         a = np.ones(len(X_train_label0_np)) / len(X_train_label0_np)
                         b = np.ones(len(X_test_label0_np)) / len(X_test_label0_np)
-                        
-                        # Compute Wasserstein-2 distance
                         wasserstein_dist = ot.emd2(a, b, M)
                     else:
                         wasserstein_dist = np.nan
 
-                    # Store results
                     results.append({
                         'train': train_cohort,
                         'test': test_cohort,
@@ -182,13 +195,11 @@ def train_each_test_all(df, n_splits=20, batch_size=64, out_path="results_diseas
                         'wasserstein_dist': wasserstein_dist
                     })
 
-    # ---- Convert nested results dict into a dataframe ----
-    df = pd.DataFrame(data=results)
-
-    df.to_csv(out_path, index=False)
+    df_results = pd.DataFrame(results)
+    df_results.to_csv(out_path, index=False)
     print(f"\nSaved cross-cohort matrix to {out_path}")
 
-    return results, df
+    return results, df_results
 
 def main(args):
     df = pd.read_csv(args.features_csv)
