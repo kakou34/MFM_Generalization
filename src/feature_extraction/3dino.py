@@ -160,7 +160,7 @@ if __name__ == "__main__":
         "--checkpoint_path",
         type=str,
         required=True,
-        help="Path to the BrainIAC checkpoint file"
+        help="Path to the 3DINO checkpoint file"
     )
 
     args = parser.parse_args()
