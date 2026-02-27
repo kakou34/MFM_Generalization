@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import torch
 from torch import nn, optim
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, StratifiedGroupKFold
 from sklearn.metrics import balanced_accuracy_score, f1_score, roc_auc_score
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -47,7 +47,28 @@ def run_pairwise_experiment(df, cohort_a, cohort_b, n_samples=150, n_splits=20, 
 
 
     for split_idx in range(n_splits):
-        train_idx, test_idx = train_test_split(np.arange(len(X)), test_size=0.5, stratify=y, random_state=split_idx)
+        
+        # Check grouping
+        if 'subject_id' in data.columns:
+            groups = data['subject_id'].values
+
+            sgkf = StratifiedGroupKFold(
+                n_splits=2,   # 50/50 split
+                shuffle=True,
+                random_state=split_idx
+            )
+
+            train_idx, test_idx = next(
+                sgkf.split(X, y, groups=groups)
+            )
+
+        else:
+            train_idx, test_idx = train_test_split(
+                np.arange(len(X)),
+                test_size=0.5,
+                stratify=y,
+                random_state=split_idx
+            )
         X_train, X_test = X_tensor[train_idx], X_tensor[test_idx]
         y_train, y_test = y_tensor[train_idx], y_tensor[test_idx]
 
