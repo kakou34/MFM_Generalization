@@ -1,0 +1,45 @@
+# Install necessary packages if you don't have them
+install.packages(c("lme4", "sjPlot", "lmerTest", "broom.mixed"))
+
+library(lme4)      # For the mixed model
+library(lmerTest)  # Provides p-values for lme4 models
+library(sjPlot)    # For the beautiful publication table
+library(broom.mixed) # For tidying model outputs
+
+# 1. Load the data
+df <- read.csv("combined_cohort_disease_results.csv")
+
+# 2. Fit the Linear Mixed Effects Model
+# We use lmer from lmerTest to get Satterthwaite's degrees of freedom (p-values)
+model <- lmer(balanced_accuracy_disease ~ balanced_accuracy_cohort + (1|model) + (1|train) + (1|test), 
+              data = df)
+
+# 3. View a detailed summary in the console
+summary(model)
+
+# 4. Generate a Publication-Ready Table
+# This creates an HTML table you can open in a browser or paste into Word
+tab_model(model, 
+          show.re.var = TRUE,          # Show Random Effect Variances
+          show.icc = TRUE,             # Show Intraclass Correlation
+          p.style = "numeric_stars",   # Use stars for p-values (* < 0.05, etc)
+          title = "Table 1: Linear Mixed Model of Disease BACC vs. Cohort BACC",
+          dv.labels = "Disease BACC (Dependent Variable)",
+          string.pred = "Predictors",
+          digits = 4,
+          digits.re = 6,
+          file = "local/output/model_table.html")    # Saves the table to a file
+
+library(broom.mixed)
+
+# 1. Get the Fixed Effects (Estimate, Std.Error, p-value)
+fixed_df <- tidy(model, effects = "fixed")
+print("--- Fixed Effects ---")
+print(fixed_df)
+
+# 2. Get the Random Effects (Variances and Standard Deviations)
+random_df <- tidy(model, effects = "ran_pars")
+print("--- Random Effects ---")
+print(random_df)  
+          
+          
