@@ -1,0 +1,78 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+\begin{document}
+
+\begin{algorithm}[t]
+\caption{Cohort separability and cross-cohort disease classification}
+\label{alg:pipeline}
+\begin{algorithmic}[1]
+\Require Cohorts $\mathcal{C} = \{C_1,\dots,C_6\}$; foundation models $\mathcal{F} = \{f_1,\dots,f_5\}$;
+  for each $f \in \mathcal{F}$ and $C_k \in \mathcal{C}$, features and labels
+  $\mathcal{D}^{f}_{k} = \{(\mathbf{x}^{f}_{s}, y_s)\}_{s \in C_k}$, $y_s \in \{\text{AD}, \text{CN}\}$;
+  number of CN subjects in each cohort $N^{\text{CN}}_{k}$;
+  maximum number of CN subjects sampled per cohort $n_{\max} = 150$;
+  number of iterations $R = 20$
+\Ensure Data frame $\mathcal{T}$ with one row per iteration, foundation model and ordered
+  (train, test) cohort pair, built from the cohort matrices $\mathbf{P}^{\text{coh}}_{r,f}$
+  and disease matrices $\mathbf{P}^{\text{dis}}_{r,f} \in [0,1]^{6\times 6}$
+\For{$r = 1$ \textbf{to} $R$}
+  \Statex \hspace{\algorithmicindent}\textit{Step 0: draw samples and splits, shared by every $f \in \mathcal{F}$}
+  \For{\textbf{each} unordered pair $(i,j)$ with $1 \le i < j \le 6$}
+    \State $n_i \gets \min\big(N^{\text{CN}}_{i},\, n_{\max}\big)$; \;
+           $n_j \gets \min\big(N^{\text{CN}}_{j},\, n_{\max}\big)$
+    \State $S_i \gets$ sample $n_i$ CN subjects from $C_i$; \;
+           $S_j \gets$ sample $n_j$ CN subjects from $C_j$
+    \State Assign cohort labels: $c_s = i$ for $s \in S_i$, $c_s = j$ for $s \in S_j$
+    \State Split $S_i \cup S_j$ into $S^{\text{tr}}_{r,ij}$ and $S^{\text{te}}_{r,ij}$ (50\%/50\%, stratified by cohort)
+    \State $S^{\text{tr}}_{i} \gets S^{\text{tr}}_{r,ij} \cap S_i$; \; $S^{\text{tr}}_{j} \gets S^{\text{tr}}_{r,ij} \cap S_j$
+    \State $m \gets \arg\min_{k \in \{i,j\}} |S^{\text{tr}}_{k}|$; \; $M \gets$ the other cohort of the pair
+    \State $\Delta \gets |S^{\text{tr}}_{M}| - |S^{\text{tr}}_{m}|$
+    \State $\tilde{S}^{\text{tr}}_{m} \gets S^{\text{tr}}_{m} \uplus \{\Delta \text{ subjects drawn from } S^{\text{tr}}_{m} \text{ with replacement}\}$
+           \Comment{oversampling by repetition}
+    \State $\tilde{S}^{\text{tr}}_{r,ij} \gets \tilde{S}^{\text{tr}}_{m} \uplus S^{\text{tr}}_{M}$
+           \Comment{$S^{\text{te}}_{r,ij}$ is left unchanged}
+  \EndFor
+  \For{$i = 1$ \textbf{to} $6$}
+    \State Split $C_i$ into $C^{\text{tr}}_{r,i}$ and $C^{\text{val}}_{r,i}$ (70\%/30\%, stratified by diagnosis)
+  \EndFor
+  \For{\textbf{each} $f \in \mathcal{F}$}
+    \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{Step 1: cohort classification}
+    \For{\textbf{each} unordered pair $(i,j)$ with $1 \le i < j \le 6$}
+      \State Train cohort classifier $g_{ij}$ on $\{(\mathbf{x}^{f}_{s}, c_s)\}_{s \in \tilde{S}^{\text{tr}}_{r,ij}}$
+      \State $\mathbf{P}^{\text{coh}}_{r,f}[i,j] \gets \mathrm{AUC}\big(g_{ij}, \{(\mathbf{x}^{f}_{s}, c_s)\}_{s \in S^{\text{te}}_{r,ij}}\big)$; \;
+             $\mathbf{P}^{\text{coh}}_{r,f}[j,i] \gets \mathbf{P}^{\text{coh}}_{r,f}[i,j]$
+    \EndFor
+    \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{Step 2: disease classification}
+    \For{$i = 1$ \textbf{to} $6$}
+      \State Train AD vs.\ CN classifier $h_{i}$ on $\{(\mathbf{x}^{f}_{s}, y_s)\}_{s \in C^{\text{tr}}_{r,i}}$
+      \State $\mathbf{P}^{\text{dis}}_{r,f}[i,i] \gets \mathrm{AUC}\big(h_{i}, \{(\mathbf{x}^{f}_{s}, y_s)\}_{s \in C^{\text{val}}_{r,i}}\big)$
+             \Comment{internal validation}
+      \For{\textbf{each} $j \ne i$}
+        \State $\mathbf{P}^{\text{dis}}_{r,f}[i,j] \gets \mathrm{AUC}\big(h_{i}, \mathcal{D}^{f}_{j}\big)$
+               \Comment{external test}
+      \EndFor
+    \EndFor
+  \EndFor
+\EndFor
+\Statex \textit{Step 3: assemble data frame}
+\State $\mathcal{T} \gets$ empty table with columns
+       (\texttt{i}, \texttt{model}, \texttt{train}, \texttt{test}, \texttt{auc\_cohort}, \texttt{auc\_disease})
+\For{$r = 1$ \textbf{to} $R$}
+  \For{\textbf{each} $f \in \mathcal{F}$}
+    \For{\textbf{each} ordered pair $(k,l)$ with $k \ne l$}
+      \State Append row
+             $\big(r,\; f,\; C_k,\; C_l,\; \mathbf{P}^{\text{coh}}_{r,f}[k,l],\; \mathbf{P}^{\text{dis}}_{r,f}[k,l]\big)$
+             to $\mathcal{T}$
+    \EndFor
+  \EndFor
+\EndFor
+\State \Return $\mathcal{T}$ \Comment{$R \cdot |\mathcal{F}| \cdot 6 \cdot 5 = 3000$ rows}
+\end{algorithmic}
+\end{algorithm}
+
+\end{document}

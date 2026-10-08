@@ -17,7 +17,9 @@ from monai.transforms import (
 
 from monai.networks.nets import ViT
 
-# fix random seed 
+from grid_io import save_grid, write_metadata_csv
+
+# fix random seed
 seed = 42
 random.seed(seed)
 np.random.seed(seed)
@@ -77,12 +79,12 @@ def prepare_data(csv_path, root_path):
     )
     return loader
 
-### Function to extract the features
-def extract_features(model, loader, save_path):
+### Function to extract the raw feature grids (patch tokens, no CLS token)
+def extract_grids(model, loader, save_dir, metadata_csv):
     model.eval()
     model.cuda()  # Move model to GPU if available
 
-    all_features = []
+    all_metadata = []
     with torch.no_grad():
         for batch in loader:
             imgs = batch["img"].cuda()
@@ -90,20 +92,18 @@ def extract_features(model, loader, save_path):
             labels = batch["label"]
             cohorts = batch["cohort"]
 
-            feats = model(imgs)  # shape: [batch_size, num_features]
-            feats = feats.cpu().numpy()
+            grids = model(imgs)  # shape: [batch_size, num_tokens, hidden_dim]
+            grids = grids.cpu().numpy()
 
-            for i in range(feats.shape[0]):
-                record = {
+            for i in range(grids.shape[0]):
+                save_grid(ids[i], grids[i], save_dir)
+                all_metadata.append({
                     "id": ids[i],
                     "label": labels[i].item(),
                     "cohort": cohorts[i],
-                }
-                record.update({f"Feature{j+1}": feats[i, j] for j in range(feats.shape[1])})
-                all_features.append(record)
+                })
 
-    df_feats = pd.DataFrame(all_features)
-    df_feats.to_csv(save_path, index=False)
+    write_metadata_csv(all_metadata, metadata_csv)
 
 
 ### Model definition
@@ -141,15 +141,14 @@ class ViTBackboneNet(nn.Module):
 
 
     def forward(self, x):
-        # Get features from ViT backbone
+        # Get raw token grid from ViT backbone (no pooling here anymore --
+        # pooling is applied downstream by pool_grids.py on the saved grid).
+        # features[0] shape: [batch_size, num_tokens, hidden_dim]. The ViT below
+        # is built with MONAI's default classification=False, so no CLS token is
+        # prepended -- every row is a patch token (6^3 = 216 for 96^3 input at
+        # patch 16). Pool these with has_cls=False.
         features = self.backbone(x)
-        
-        # Use CLS token (first token) as global representation
-        # features[0] shape: [batch_size, num_tokens, hidden_dim]
-        # features[0][:, 0] gets CLS token: [batch_size, hidden_dim]
-        cls_token = features[0][:, 0]  # Shape: [batch_size, 768]
-        
-        return cls_token
+        return features[0]  # Shape: [batch_size, num_tokens, 768]
 
 
 def main(args):
@@ -160,14 +159,16 @@ def main(args):
     print("Preparing model...")
     model = ViTBackboneNet(args.checkpoint_path)
 
-    print("Model prepared. Extracting features...")
-    extract_features(model, loader, args.save_path)
-    print("Features extracted and saved to:", args.save_path)
+    print("Model prepared. Extracting raw feature grids...")
+    extract_grids(model, loader, args.save_dir, args.metadata_csv)
+    print("Raw feature grids saved to:", args.save_dir)
+    print("Metadata saved to:", args.metadata_csv)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Extract BrainIAC features from brain MRI data"
+        description="Extract raw BrainIAC feature grids from brain MRI data "
+                     "(pool them into feature vectors with pool_grids.py)"
     )
 
     parser.add_argument(
@@ -185,12 +186,19 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--save_path",
+        "--save_dir",
         type=str,
         required=True,
-        help="Path to save the extracted features CSV"
+        help="Directory to save the per-sample raw feature grid .npy files"
     )
-    
+
+    parser.add_argument(
+        "--metadata_csv",
+        type=str,
+        required=True,
+        help="Path to save the id/label/cohort metadata CSV"
+    )
+
     parser.add_argument(
         "--checkpoint_path",
         type=str,
