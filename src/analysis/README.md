@@ -13,4 +13,3 @@ All statistics use one row per (FM, source, target) cell = mean over the 20 iter
 | `05_pooling_ablation.py` | Mean vs max vs GeM (5 FMs; 3DINO has no pooling): mean AUCs and main-LMM slope, external AUC per FM |
 | `06_feature_space_figures.py` | t-SNE grids and 2-Wasserstein heatmaps (+ cohort-vs-disease distance ratio) for the 6 FMs |
 
-`03_mantel_power.py` is an obsolete stub - delete it.
